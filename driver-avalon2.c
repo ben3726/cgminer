@@ -684,7 +684,7 @@ static int64_t avalon2_scanhash(struct thr_info *thr)
 	if (thr->work_restart || thr->work_update ||
 	    info->first) {
 		info->new_stratum = true;
-		applog(LOG_DEBUG, "Avalon2: New stratum: restart: %d, update: %d, first: %d",
+		applog(LOG_ERR, "Avalon2: New stratum: restart: %d, update: %d, first: %d",
 		       thr->work_restart, thr->work_update, info->first);
 		thr->work_update = false;
 		thr->work_restart = false;

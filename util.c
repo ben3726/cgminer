@@ -1685,6 +1685,32 @@ static bool parse_notify(struct pool *pool, json_t *val)
 	ntime = __json_array_string(val, 7);
 	clean = json_is_true(json_array_get(val, 8));
 
+#ifdef USE_AVALON2
+	static struct timeval tv_last, tv_now;
+
+	cgtime(&tv_now);
+        applog(LOG_ERR, "Clean %d: (%ld  -- %ld) TDIFF: %ld",
+		clean,
+		(long)tv_now.tv_sec, (long)tv_last.tv_sec,
+		(long)tdiff(&tv_now, &tv_last));
+
+	if (pool == current_pool()) {
+        	applog(LOG_ERR, "XIANGFU");
+		if ((long)tdiff(&tv_now, &tv_last) < (long)30) {
+        		applog(LOG_ERR, "<<<< 30");
+			goto out;
+		}
+	}
+
+	tv_last.tv_sec = tv_now.tv_sec;
+	tv_last.tv_usec = tv_now.tv_usec;
+
+        applog(LOG_ERR, "Clean %d: (%ld  -- %ld) TDIFF: %ld",
+		clean,
+		(long)tv_now.tv_sec, (long)tv_last.tv_sec,
+		(long)tdiff(&tv_now, &tv_last));
+#endif
+
 	if (!job_id || !prev_hash || !coinbase1 || !coinbase2 || !bbversion || !nbit || !ntime) {
 		/* Annoying but we must not leak memory */
 		if (job_id)
@@ -1786,6 +1812,7 @@ static bool parse_notify(struct pool *pool, json_t *val)
 out_unlock:
 	cg_wunlock(&pool->data_lock);
 
+		applog(LOG_ERR, "job_id: %s", job_id);
 	if (opt_protocol) {
 		applog(LOG_DEBUG, "job_id: %s", job_id);
 		applog(LOG_DEBUG, "prev_hash: %s", prev_hash);
