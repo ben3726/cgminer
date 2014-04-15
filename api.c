@@ -38,7 +38,7 @@
 #endif
 
 // BUFSIZ varies on Windows and Linux
-#define TMPBUFSIZ	8192
+#define TMPBUFSIZ	(8192 * 4)
 
 // Number of requests to queue - normally would be small
 // However lots of PGA's may mean more
