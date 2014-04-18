@@ -104,6 +104,11 @@ if HAS_COINTERRA
 cgminer_SOURCES += driver-cointerra.c driver-cointerra.h
 endif
 
+if HAS_SPONDOOLIES
+cgminer_SOURCES += driver-spondoolies.c driver-spondoolies.h \
+		   mg_proto_parser.c mg_proto_parser.h
+endif
+
 if HAS_BAB
 cgminer_SOURCES += driver-bab.c
 endif
@@ -114,6 +119,10 @@ endif
 
 if HAS_MINION
 cgminer_SOURCES += driver-minion.c
+endif
+
+if HAS_ANT_S1
+cgminer_SOURCES += driver-bitmain.c driver-bitmain.h
 endif
 
 if HAS_MODMINER

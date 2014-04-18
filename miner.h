@@ -167,6 +167,7 @@ static inline int fsync (int fd)
 #  define le64toh(x) (x)
 #  define be32toh(x) bswap_32(x)
 #  define be64toh(x) bswap_64(x)
+#  define htobe16(x) bswap_16(x)
 #  define htobe32(x) bswap_32(x)
 #  define htobe64(x) bswap_64(x)
 # elif __BYTE_ORDER == __BIG_ENDIAN
@@ -178,6 +179,7 @@ static inline int fsync (int fd)
 #  define htole64(x) bswap_64(x)
 #  define be32toh(x) (x)
 #  define be64toh(x) (x)
+#  define htobe16(x) (x)
 #  define htobe32(x) (x)
 #  define htobe64(x) (x)
 #else
@@ -244,8 +246,10 @@ static inline int fsync (int fd)
 	DRIVER_ADD_COMMAND(drillbit) \
 	DRIVER_ADD_COMMAND(bab) \
 	DRIVER_ADD_COMMAND(minion) \
+	DRIVER_ADD_COMMAND(ants1) \
 	DRIVER_ADD_COMMAND(avalon2) \
-	DRIVER_ADD_COMMAND(avalon)
+	DRIVER_ADD_COMMAND(avalon) \
+	DRIVER_ADD_COMMAND(spondoolies)
 
 #define DRIVER_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
 	FPGA_PARSE_COMMANDS(DRIVER_ADD_COMMAND) \
@@ -425,6 +429,7 @@ struct cgpu_info {
 	char *name;
 	char *device_path;
 	void *device_data;
+	char *unique_id;
 #ifdef USE_USBUTILS
 	struct cg_usb_device *usbdev;
 	struct cg_usb_info usbinfo;
@@ -460,6 +465,9 @@ struct cgpu_info {
 	int rejected;
 	int hw_errors;
 	double rolling;
+	double rolling1;
+	double rolling5;
+	double rolling15;
 	double total_mhashes;
 	double utility;
 	enum alive status;
@@ -538,7 +546,6 @@ struct thr_info {
 
 	bool	pause;
 	bool	getwork;
-	double	rolling;
 
 	bool	work_restart;
 	bool	work_update;
@@ -678,6 +685,9 @@ endian_flip128(void __maybe_unused *dest_p, const void __maybe_unused *src_p)
 #endif
 
 extern double cgpu_runtime(struct cgpu_info *cgpu);
+extern double tsince_restart(void);
+extern double tsince_update(void);
+extern void __quit(int status, bool clean);
 extern void _quit(int status);
 
 /*
@@ -690,7 +700,7 @@ extern void _quit(int status);
  * So, e.g. use it to track down a deadlock - after a reproducable deadlock occurs
  * ... Of course if the API code itself deadlocks, it wont help :)
  */
-#define LOCK_TRACKING 1
+#define LOCK_TRACKING 0
 
 #if LOCK_TRACKING
 enum cglock_typ {
@@ -738,6 +748,7 @@ extern void api_initlock(void *lock, enum cglock_typ typ, const char *file, cons
 #define cglock_init(_lock) _cglock_init(_lock, __FILE__, __func__, __LINE__)
 #define cg_rlock(_lock) _cg_rlock(_lock, __FILE__, __func__, __LINE__)
 #define cg_ilock(_lock) _cg_ilock(_lock, __FILE__, __func__, __LINE__)
+#define cg_uilock(_lock) _cg_uilock(_lock, __FILE__, __func__, __LINE__)
 #define cg_ulock(_lock) _cg_ulock(_lock, __FILE__, __func__, __LINE__)
 #define cg_wlock(_lock) _cg_wlock(_lock, __FILE__, __func__, __LINE__)
 #define cg_dwlock(_lock) _cg_dwlock(_lock, __FILE__, __func__, __LINE__)
@@ -882,6 +893,12 @@ static inline void _cg_ilock(cglock_t *lock, const char *file, const char *func,
 	_mutex_lock(&lock->mutex, file, func, line);
 }
 
+/* Unlock intermediate variant without changing to read or write version */
+static inline void _cg_uilock(cglock_t *lock, const char *file, const char *func, const int line)
+{
+	_mutex_unlock(&lock->mutex, file, func, line);
+}
+
 /* Upgrade intermediate variant to a write lock */
 static inline void _cg_ulock(cglock_t *lock, const char *file, const char *func, const int line)
 {
@@ -980,12 +997,17 @@ extern char *opt_klondike_options;
 #endif
 #ifdef USE_DRILLBIT
 extern char *opt_drillbit_options;
+extern char *opt_drillbit_auto;
 #endif
 #ifdef USE_BAB
 extern char *opt_bab_options;
 #endif
 #ifdef USE_BITMINE_A1
 extern char *opt_bitmine_a1_options;
+#endif
+#ifdef USE_ANT_S1
+extern char *opt_bitmain_options;
+extern bool opt_bitmain_hwerror;
 #endif
 #ifdef USE_USBUTILS
 extern char *opt_usb_select;
@@ -1006,6 +1028,7 @@ extern pthread_rwlock_t netacc_lock;
 
 extern const uint32_t sha256_init_state[];
 #ifdef HAVE_LIBCURL
+extern json_t *json_web_config(const char *url);
 extern json_t *json_rpc_call(CURL *curl, const char *url, const char *userpass,
 			     const char *rpc_req, bool, bool, int *,
 			     struct pool *pool, bool);
@@ -1082,6 +1105,7 @@ extern struct pool **pools;
 extern struct strategies strategies[];
 extern enum pool_strategy pool_strategy;
 extern int opt_rotate_period;
+extern double rolling1, rolling5, rolling15;
 extern double total_rolling;
 extern double total_mhashes_done;
 extern unsigned int new_blocks;
@@ -1116,16 +1140,9 @@ enum pool_enable {
 
 struct stratum_work {
 	char *job_id;
-	char *prev_hash;
 	unsigned char **merkle_bin;
-	char *bbversion;
-	char *nbit;
-	char *ntime;
 	bool clean;
 
-	size_t cb_len;
-	size_t header_len;
-	int merkles;
 	double diff;
 };
 
@@ -1216,7 +1233,6 @@ struct pool {
 
 	char *nonce1;
 	unsigned char *nonce1bin;
-	size_t n1_len;
 	uint64_t nonce2;
 	int n2size;
 	char *sessionid;
@@ -1245,13 +1261,30 @@ struct pool {
 	uint32_t gbt_bits;
 	unsigned char *txn_hashes;
 	int gbt_txns;
-	int coinbase_len;
+	int height;
+
+	bool gbt_solo;
+	unsigned char merklebin[16 * 32];
+	int transactions;
+	char *txn_data;
+	unsigned char scriptsig_base[100];
+	unsigned char script_pubkey[25 + 3];
+	int nValue;
+	CURL *gbt_curl;
+	bool gbt_curl_inuse;
 
 	/* Shared by both stratum & GBT */
+	size_t n1_len;
 	unsigned char *coinbase;
+	int coinbase_len;
 	int nonce2_offset;
 	unsigned char header_bin[128];
-	int merkle_offset;
+	int merkles;
+	char prev_hash[68];
+	char bbversion[12];
+	char nbit[12];
+	char ntime[12];
+	double sdiff;
 
 	struct timeval tv_lastwork;
 };
@@ -1262,6 +1295,7 @@ struct pool {
 #define GETWORK_MODE_BENCHMARK 'B'
 #define GETWORK_MODE_STRATUM 'S'
 #define GETWORK_MODE_GBT 'G'
+#define GETWORK_MODE_SOLO 'C'
 
 struct work {
 	unsigned char	data[128];
@@ -1304,7 +1338,7 @@ struct work {
 	int		gbt_txns;
 
 	unsigned int	work_block;
-	int		id;
+	uint32_t	id;
 	UT_hash_handle	hh;
 
 	double		work_difficulty;
@@ -1381,6 +1415,8 @@ extern struct work *get_queue_work(struct thr_info *thr, struct cgpu_info *cgpu,
 extern struct work *__find_work_bymidstate(struct work *que, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
 extern struct work *find_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
 extern struct work *clone_queued_work_bymidstate(struct cgpu_info *cgpu, char *midstate, size_t midstatelen, char *data, int offset, size_t datalen);
+extern struct work *__find_work_byid(struct work *que, uint32_t id);
+extern struct work *find_queued_work_byid(struct cgpu_info *cgpu, uint32_t id);
 extern void __work_completed(struct cgpu_info *cgpu, struct work *work);
 extern int age_queued_work(struct cgpu_info *cgpu, double secs);
 extern void work_completed(struct cgpu_info *cgpu, struct work *work);
@@ -1413,6 +1449,8 @@ extern void tq_thaw(struct thread_q *tq);
 extern bool successful_connect;
 extern void adl(void);
 extern void app_restart(void);
+extern void roll_work(struct work *work);
+extern struct work *make_clone(struct work *work);
 extern void clean_work(struct work *work);
 extern void free_work(struct work *work);
 extern void set_work_ntime(struct work *work, int ntime);
@@ -1427,6 +1465,7 @@ enum api_data_type {
 	API_STRING,
 	API_CONST,
 	API_UINT8,
+	API_INT16,
 	API_UINT16,
 	API_INT,
 	API_UINT,
@@ -1463,6 +1502,7 @@ extern struct api_data *api_add_escape(struct api_data *root, char *name, char *
 extern struct api_data *api_add_string(struct api_data *root, char *name, char *data, bool copy_data);
 extern struct api_data *api_add_const(struct api_data *root, char *name, const char *data, bool copy_data);
 extern struct api_data *api_add_uint8(struct api_data *root, char *name, uint8_t *data, bool copy_data);
+extern struct api_data *api_add_int16(struct api_data *root, char *name, uint16_t *data, bool copy_data);
 extern struct api_data *api_add_uint16(struct api_data *root, char *name, uint16_t *data, bool copy_data);
 extern struct api_data *api_add_int(struct api_data *root, char *name, int *data, bool copy_data);
 extern struct api_data *api_add_uint(struct api_data *root, char *name, unsigned int *data, bool copy_data);

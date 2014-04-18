@@ -1,3 +1,472 @@
+Version 4.3.0 - 18th April 2014
+
+- Put sleep in spond hash instead of queue full function
+- Remove unused function for when compiled without curses
+- Fix typo
+- Add temperature rate, front, rear and device temperature to spond API output
+- Limit bxf sleep in bxf_scan to 100ms minimum for strings of many chips
+- -Werror=format-security error on driver-bitmain.c
+- Fix parameters passed with getblockhash
+- Check the block hash with the proper command when looking for orphan chains
+- syslog requires a facility ... in more than one place
+- Shuffle windows headers included
+- Adjust the bxf sleep time according to the number of chips detected
+- Fix off by one error in bxf chip count when adjusting device size
+- Recalloc correct pointer
+- Make instructions associated with winusb error even more explicit
+- Add midsing headers to cgminer source in Makefile
+- Trivial style changes to mg proto parser
+- Trivial style and warning clean ups on spondoolies driver
+- Merge spondoolies driver patch
+- Call any BXF device with 3-6 chips reported HXF
+- Avoid derefrence when calling statline before on hfa device during init
+sequence
+- Calloc the info structures even on failed hfa reset to prevent later possible
+dereference
+- Load all hfa devices based on identification alone and defer init sequence
+till mining thread init sequence to allow all devices to be recognised rapidly
+but each device initialisation not delay others
+- Do not do thread shutdown unless thread init succeeded
+- Remove unnecessary check for thread_prepare function
+- Recognise variations on BXF based on chip value returned in responses
+- Provide helper function for recallocing memory
+- syslog requires a facility
+
+
+Version 4.2.3 - 3rd April 2014
+
+- Decay the per device hashrates when only the watchdog is calling the hashmeter
+- Fix parsing of config files failing on custom parsing
+- Allow an arbitrary number of chips in the BXF driver, showing results from
+each chip in the API and identify the hexfury, naming it HXF
+- Disable toggling display by default and offer a --widescreen option to have
+all the information on an extra wide display.
+- Use OPT_WITH_CBARG for all custom parsing functions to allow their values to
+be written generically when writing the config file from the menu.
+- Provide a ccan variant OPT_WITH_CBARG that assigns the arguments passed as a
+string and then performs the callback function on the string.
+- Define strings to store special option parsing parameters leaving no
+OPT_WITH_ARG missing args
+- Correct the writing of special case options to the config file
+- Provide support for writing anu freq from menu write option
+- Update to diver-avalon2.c
+- Generalise a lot more of the command line options simplifying the write config
+function and making it write far more values unaided
+- Use the general opt_set_charp functions for setting api parameters
+- Json escape any strings written to the config file
+- Store standard charp options when writing config files
+- Add support for all the integer range options when writing the config file
+from the menu
+- Remove the --device and --remove-disabled options which don't work in a
+meaningful way any more
+- Make the bxf bits configurable on the command line
+- Provide a --btc-sig option to optionally add a custom signature to the solo
+mining coinbsae
+- Compact gbt solo extra data and store the length, allowing it to be variable,
+leaving room for a signature
+- miner.php - Kano summary Pool Acc/Rej should be only work submitted
+- miner.php add best share and gen formatting for pool summary
+- miner.php - remove BGEN/GEN eval() errors from the web log
+- miner.php allow optional fields when gen is disabled
+- miner.php dont format missing gen fields
+- miner.php make Summary a custompage
+- miner.php allow uers and system lists of customsummarypages and add more
+examples
+- Fix getwork share submission
+- Cosmetic fix to udev rules
+- Put WU on the hashrate status to compact lines further
+- miner.php show api/rig errors at the top of a customsummarypage
+
+
+Version 4.2.2 - 29th March 2014
+
+- Minor correctness fix for unnecessary free
+- Clean up various curl build issues
+- allow url based config files
+- Frequency only needs 3 digits for cointerra statline
+- Use the serial number as unique_id for cta display
+- Make it possible to enable/disable the status window from switching via the
+display menu
+- We should not update the tv hashmeter time unless we're updating the hashrates
+- Add cointerra devices to udev rules.
+- Use hashfast unique id instead of number since the unique id is displayed
+- Remove displayed space
+- Left align the displayed unique id
+- Use the hashfast opname as its unique identifier
+- Display BF1 serial number as its unique identifier
+- Display a unique identifier instead of a number if the device has one
+- Use an alternating status display to return to a compact width of 80
+characters, allowing more information to be displayed.
+- No need for looking for khash hashrates in summary any more
+- Fix two potential minor mem leaks
+- Fix memory leaks in setup and generate work for gbt solo.
+- Fix off by one malloc size error
+- Fix memory leak in update_gbt_solo
+- Put sanity check on decay_time to prevent updates with no time
+- Add 3 rolling average hashrates to API output for summary and devs.
+- Use the extra status screen real estate better, displaying rolling 1/5/15min
+average hashrates as well.
+- Revamp the ageing crufty hashmeter code to have proper exponential decaying
+values and store rolling 1/5/15min hashrates.
+- Increment total_work under control lock.
+- Trivial variable reuse
+- Add support for other usb3 hubs on windows
+
+
+Version 4.2.1 - 24th March 2014
+
+- Fix various ava2 build issues generically
+- Minimise the amount of heap memory allocations/frees when submitting gbt
+shares.
+- Make varint in gbt submission a stack object.
+- Fix big endian problems with gbt submissions.
+- Fix 32bit overflow on relative diff shown.
+- ants1 - stop results read hard looping
+- ants1 - slow down mining if overheat occurs
+- miner.php allow gen before (bgen) and after (gen) grouping
+- Change default solo mining to failing when no btc address is specified.
+- Use upgrade cglock variants in get_gbt_curl
+- Provide a cg_uilock to unlock the intermediate variant of cglocks.
+- Use the one curl instance for all gbt solo operations, protecting its use with
+a bool set under gbt lock.
+- Only start block detection with gbt solo if setup succeeded
+- One less block detection message
+- Toss out the curl handle after each solo poll
+- Don't reuse any curl handles for solo mining and break out of the lp thread if
+the pool is removed.
+- Make sure to only start the lognpoll thread once on gbt solo.
+- Don't keep RPC connections open for solo mining since bitcoind doesn't like
+having many persistent connections.
+- GBT solo pools should be considered localgen pools.
+- miner.php - speed up formatting and allow calc on gen fields
+- Always show the address we're solo mining to to avoid confusion for when no
+address is set.
+
+
+Version 4.2.0 - 18th March 2014
+
+- Fix missing htobe16 on windows and meaningless >u32 string warning.
+- Software ntime roll for all hashfast devices.
+- Silence harmless warning.
+- Drop a failed restart icarus device to allow it to be rehotplugged if
+possible.
+- Work with more than one transaction.
+- Kill gbt solo pools that don't respond to the gbt request 5 times
+sequentially.
+- Fix ser_number for no remaining val byte.
+- Create a work item and stage it when updating the gbt solo template to allow
+new block detection and restart code to work.
+- Test block hash as well as block height when solo mining to ensure we haven't
+been mining on an orphan branch.
+- Fix transaction processing for gbt solo.
+- Encode height using integer varint format.
+- Make new block detection message not show in gbt solo from test_work_current
+- Add block detection via getblockcount polling in gbt solo and update gbt
+template every 60 seconds.
+- Iterate over transactions twice to malloc only once when copying all the
+transaction data.
+- Update solo coinbase regularly and submit as gbt work
+- Only show merkle hashes for solo mining in debug mode.
+- Set correct flag for solo work.
+- Generate gbt solo work emulating stratum work construction.
+- Set the diff as a double sdiff from gbt solo data.
+- Move swork.diff out of the stratum work section to be shared as sdiff.
+- Generate a header bin from gbt solo as per the cached stratum one.
+- Store strings similar to stratum's when decoding gbt solo
+- Avoid allocing and freeing stratum strings that should be fixed length.
+- Run parser through detect_stratum after stratum+tcp:// is force added
+- Remove unnecessary header length calculation for stratum header binary and
+only binary convert the correct length of the header.
+- Share more fields between stratum and gbt
+- Share coinbase_len variable b/w stratum and gbt and setup more gbt solo
+parameters.
+- Generate a valid coinbase and set nonce2offset for gbt solo
+- Move scriptsig header bin conversion to setup gbt solo
+- Create our own custom scriptsig base.
+- Add helper functions for creating script signature templates and beging
+building template.
+- Do gbt solo decoding under gbt lock.
+- Add more gbt variable decoding from gbt solo information.
+- Store all the transaction data in binary form when using GBT
+- When setting up solo mining, check validity of bitcoin address against
+bitcoind
+- Make pooled GBT mining use merkle bin optimisations slated for solo mining.
+- Abstract out the merkle bin calculation for gbt solo
+- Implement efficient merkle tree base from solo GBT information.
+- miner.php custom formatting and row counter '#'
+- Drillbit: Fix for underestimating hash rate from Bitfury devices
+- Send per-core hashrates at regular ~5min intervals back to cta devices.
+- Calculate the cta per core hashrate at 5 minute intervals.
+- Check the bits of the correct core in cta bit count.
+- Display the bit count along with the bitmap for each cta core in the API stats
+output.
+- Store and display the per core hashrate on cta relative to each work restart.
+- Decrease the time we wait for unsetting a core on the cta bitmap to correspond
+with the lower max diff of 32.
+- Set max diff on cointerra devices to 32 which is still only 11 shares per
+second but allows for earlier confirmation of per core hashrates.
+- Keep track of when the last restart and work updates were triggered and
+provide helper functions for knowing the time since then.
+- hashfast make api stats field names unique
+- Fix gcc longjmp warning in api.c
+- Add a per-core hashrate to the cta API stats.
+- miner.php support edevs and estats
+- API - put edevstatus where it was supposed to be
+- Icarus - allow timing mode to work with ANU and not slow it down
+- drillbit - remove warnings
+- drillbit - minor code tidy up
+- Drillbit: Change language around 'void' to warning about limiter disabled
+- Drillbit: Fix accidental over-counting of HW errors
+- Drillbit: --drillbit-auto parameter for tweakable custom tuning of ASIC speeds
+- Drillbit: Output warning if board reports void warranty
+- Drillbit: Add Avalon & drillbit-autotune notes to ASIC-README
+- Drillbit: Limit work sent out to 8 units in a single pass, was DoSing a full
+double scroll
+- Drillbit: Move drillbit_empty_buffer calls to only when errors occur, were
+limiting performance on Windows
+- Fix Windows bug with libusb_reset_device returning SUCCESS for disconnected
+device
+- Drillbit: Fix some warnings
+- Drillbit: Add --drillbit-autotune option for device to dynamically alter clock
+speed
+- Drillbit: Fix typo in previous commit
+- Drillbit: Remove default config in cgminer, rely on defaults in firmware
+- Drillbit: Combine split USB transfer for sending new work, reduce overhead
+- Drillbit: Add support for protocol V4, with device-agnostic board
+configuration data
+- Drillbit driver: Add support for Avalon-based Drillbit miners
+- API - add edevs and estats - to only show enabled devices
+- Check device data exists on a hfa instance before trying to reinit it.
+- Print off what quadrant regulator failed if known in hfa driver.
+- Reset all the stats on autovoltage complete in cta driver.
+- Use correct diff instead of diffbits in cta driver.
+- Whitelist all firmwares <= 0.5 on hfa for software rolling of ntime.
+- Avoid a memory leak by reusing the ntime field when rolling stratum work.
+- Clear the pipe bitmap on cta only when no share has occurred for 2 hours
+instead of 1.
+- Cta share_hashes should be added, and we can base it on device wdiff instead
+of pool work difficulty for more accurate hashrates.
+- Since the device runtime is now reset, the Raw hashrate entry in the cta API
+output is no longer meaningful.
+- Look for autovoltage returning to zero on cta driver and reset stats at that
+point since the hashrate is unreliable till then.
+- ants1 - cgminerise applog calls
+- Default to stratum+tcp:// on any urls that don't have a prefix instead of
+http.
+- Trivial cta style changes.
+- ants1 - fix/enable temperature checking and remove unneeded temp_old
+- ants1 - move local cgpu variables to info structure
+- ants1 use a klist to store work and copied work
+- Simplify dramatically the cross-process cgminer locking through use of flock
+instead of sysv semaphores.
+
+
+Version 4.1.0 - 8th March 2014
+
+- Correct fix for dev start time being adjusted for stat zeroing.
+- Make per device stats work for average after a stat zeroing.
+- Add an hfa-options command line that allows the clockspeed to be chosen per
+device by name comma separated, with a function that can be expanded with more
+options in the future.
+- Off by one drv_rolllimit check against jobs
+- Free the work that may be lost, leaking memory, in a failed hfa_send_frame
+- Roll the ntime for work within the hfa driver for firmware we know doesn't do
+it internally as an optimisation.
+- Export the roll_work function to be usable by driver code and make it
+compatible with rolling stratum work.
+- Make opt_queue be respected as a maximum value for staged items.
+- Disable mistakenly enabled lock tracking.
+- api version update for HEX32
+- api.c - HEX32 type needs quotes
+- Disable the MAX_CLOCK_DIFF check for newer hashfast firmwares since it's not
+required.
+- Store the hardware and firmware revision in the info struct for easy use in
+the hfa driver.
+- Only decrease the hfa clock rate if the device has been running for less than
+an hour before dying.
+- Change lack of op name response message in hfa driver
+- Check for lost devices at every write/read in hfa_detect_common
+- Make bxm bits configurable.
+- Move avalon2 options to ~alphabetic position in help.
+- Do a shutdown routine on bxm close.
+- Provide support for 2 chips in libbitfury sendhashdata and enable the 2nd chip
+on BXM devices.
+- Remove unnecessary opayload and newbuf members of bitfury info struct.
+- Add an spi add fasync command.
+- Cope with older hfa firmware not even responding to op_name.
+- Forcibly kill everything silently with an exit code of 1 should we fail to
+cleanly shut down and use a completion timeout for the __kill_work in
+app_restart.
+- Make __kill_work itself also be a completion timeout.
+- Generalise more of libbitfury for more reuse in both nf1 and bxm drivers.
+- Remove redundant init components of bxm driver.
+- Set default osc6 bits on bxm to 50
+- Enable the transaction translator emulator for bxm devices and use a dummy spi
+tx the size of a normal payload.
+- Store usb11 and tt flags as booleans in cgusbdev allowing them to be
+discretely enabled as well as detected by the device data.
+- Add bxm scan function and check spi txrx returns only as much as sent.
+- Add init sequence to bxm detect one.
+- Add a bxm specific txrx function for spi transfers.
+- Add bxm close to bitfury shutdown switch.
+- Add reset/purge/cshigh/low sequence to bxm init
+- Add bitmode init to bxm open sequence.
+- Add initial bxm opening sequence for detect one.
+- Add identifiers for bxm bitfury devices.
+- Clean up parse_method
+- More gracefully break out of parse_notify on a corrupted hex string error,
+checking the return value of all hex2bin conversions and being consistent with
+using stack memory. Fix an unlocking error in cases of failure.
+- AntS1 - add detection information to usbutils
+- Enable Bitmain Ant S1 code and make it conform to cgminer requirements
+- Make the cointerra displayed hashrate based on valid share generation.
+- Convert and update values shown in the cointerra api output.
+- Export the api_add_int16 function.
+- Use a custom mystrstr function in cointerra driver.
+- Add api_add_int16 to API functions.
+- Add support for Bitmain Multi Chain and Single Chain and optimize the
+efficiency
+- Add support for bitmain devices
+- Perfect function of BitMain Multi Chain
+- Add support for Bitmain Multi Chain and Single Chain and optimize the
+efficiency
+- Add support for bitmain devices
+
+
+Version 4.0.1 - 28th February 2014
+
+- Refresh the log window on pool failure message at startup.
+- Rework the pool fail to connect at startup to not get stuck indefinitely
+repeatedly probing pools with new threads and to exit immediately when any key
+is pressed.
+- Use an early_quit function for shutting down when we have not successfully
+initialised that does not try to clean up.
+- Add more information to a hfa bad sequence tail event.
+- Increase the work queue at the top end if we've hit the bottom as well.
+- Set the work generation thread high priority, not the miner threads.
+- Bringing each hfa device online takes a lot of work generation so only ever do
+one at a time.
+- Increase the opt_queue if we can hit the maximum amount asked for but are
+still bottoming out.
+- Keep the old hfa device data intact with a clean thread shutdown to allow it
+to be re-hotplugged with the old information.
+- Cope with the API calling hfa on partially initialised devices having no info.
+- Show only as many digits as are required to display the number of devices.
+- Cold plug only one hashfast device to get started, and then hotplug many to
+minimise startup delays and possible communication delays causing failed first
+starts.
+- Send a shutdown and do a usb_nodev if hfa_reset fails.
+- Null a device driver should thread prepare fail.
+- Add a function for making all driver functions noops.
+- Don't try to reinit a device that's disabled.
+- Disable a device that fails to prepare.
+- Check for lack of thread in watchdog thread for a failed startup.
+- Make all device_data dereferences in the hfa driver safe by not accessing it
+in statline before when it's non-existent.
+- Add an option to disable dynamic core shedding on hashfast devices.
+- Do not remove the info struct on a failure to hfa prepare.
+- Detect an hfa device purely on the basis of getting a valid header response to
+an OP_NAME query, leaving init to hfa_prepare which will allow multiple devices
+to start without holding each other up at startup.
+- Store the presence and validity of opname in the hfa info.
+- api - buffer size off by 1 for joined commands
+- minion - clean up statline
+- Only break out of usb_detect_one when a new device is found.
+- Use usb_detect_one in the hfa driver.
+- Provide a usb_detect_one wrapper which only plugs one device at a time,
+breaking out otherwise.
+- Issue a usb_nodev on a bad work sequence tail in hfa
+- Read in hfa stream until we get a HF_PREAMBLE
+- Add shed count to hfa API stats output.
+- Display the base clockrate for hfa devices with a different name to per die
+clockrates to be able to easily distinguish them.
+- Use op_name if possible first with hfa devices to detect old instances and be
+able to choose the starting clockspeed before sending an init sequence,
+reverting to setting op name and serial number as fallbacks.
+- Make hfa resets properly inherit across a shutdown.
+- Don't break out of hfa_old_device early if there's no serial number.
+- Fix harmless warning.
+- Allow the drop in MHz per hfa failure to be specified on the command line.
+- Icarus - ignore HW errors in hash rate ... and fix detection of them
+- Enable the hfa shed supported feature by default.
+- Add to udev rules hfa devices for firmware writing.
+- Remove ENV from hashfast udev rules.
+- Add a --hfa-name command that allows one to specify the unique opname for a
+hashfast device.
+- Ava2 decode the voltage, get the temp_max
+- Set the clock rate with a work restart instead of an init when changing to old
+clocks for hfa
+- Set opname on hfa devices without a serial number to a hex value based on time
+to not overflow the field.
+- Add op name to hfa API stats output if it exists.
+- Set the actual op_name in hfa devices if cgminer is choosing it itself due to
+it being invalid.
+- Re-init an hfa device to its old data before setting up info structures as
+their sizes may change.
+- Remove the usb device whenever we do a running shutdown on hfa and do a
+shutdown as the imitated reinit  to allow it to hotplug again.
+- Reset opt hfa dfu boot after it's used.
+- Comment out windows only transfer on hfa startup.
+- Clean up structures unused in case of all failures in hfa detect common
+- Clear all structures should we fail to hfa reset on adjusting clock on a
+hotplug.
+- Set master and copy cgpu hash clock rate for hfa when dropping it on a
+restart.
+- Set the master hfa clock speed to lower when shutting down a copy.
+- Do a clear readbuf on any hfa reset in case the device  has not yet cleanly
+shut down.
+- Increase hfa fanspeed slightly more when it's rising in the optimal range than
+falling.
+- Always decrease hfa clock speed on a running shutdown and don't try sending an
+init frame since it will be dropped regardless.
+- Match hfa devices to old ones based on OP_NAME values before serial numbers if
+possible.
+- Read off the OP_NAME if it exists and is supported on hfa devices, setting it
+to the device serial number or a timestamp if it is invalid.
+- Updated hf protocol
+- Check for an amount along with no error in hfa clear readbuf
+- Hfa clear readbuf can return a nonsense amount when there's a return error so
+ignore the amount.
+- Running resets always cause a shutdown on hfa meaning the device will
+disappear with modern firmware so always kill off the threads to allow
+re-hotplugging.
+- Reset the hfa hash clock rate to the old one if we find an old instance, only
+setting the device id in hfa_prepare
+- Keep the device_id on the original zombie thread for HFA in case of further
+resets.
+- Break out of hfa inherit if there is no device data.
+- Inherit the hfa zombie instance after the device id has been allocated.
+- The list_for_each_cgpu macro will dereference when there are no mining threads
+yet.
+- Make hfa hotplug inherit some parameters from a previous instance if the
+serial number exists and is matching, avoiding dropping the clock on all
+devices.
+- Per device last getwork won't work if the device stops asking for work.
+- Use the share_work_tdiff function in the driver watchdogs.
+- Provide a helper function for determining time between valid share and getwork
+per device.
+- Store last_getwork time on a per-device basis.
+- Limit the decrease of hfa clock rate on reset to the default clockrate.
+- Base the hfa failure time on the current expected hashrate instead of a static
+15 seconds.
+- We shouldn't be trying to read from the hfa_send_shutdown function itself.
+- Reset the icarus failing flag only when a valid nonce is found.
+- Transferred value is corrupt on a NODEV error in usbutils.
+- Set each miner thread last valid work just before starting its hash loop in
+case there are delays at startup.
+- Only memcopy *transferred data in usbutils if we have received only success or
+a non-fatal error.
+- Increase to 25 nonce ranges on icarus fail detect.
+- Set icarus device fail time to be dependent on device speed to avoid falsely
+detecting failure on slower AMU devices.
+- Updated hf protocol header.
+- Updated BE hf protocol header.
+- Take into account shed cores on hfa devices when determining how many jobs to
+send.
+- Fix compilation error with two avalon types.
+- Fix missing A1 files from distribution.
+
+
 Version 4.0.0 - 21st February 2014
 
 - Check for error from setfloatval

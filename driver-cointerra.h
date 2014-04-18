@@ -15,7 +15,7 @@
 #define CTA_READ_TIMEOUT 1
 #define CTA_READ_INTERVAL 100
 #define CTA_SCAN_INTERVAL 500
-#define CTA_RESET_TIMEOUT 200
+#define CTA_RESET_TIMEOUT 1000
 
 #define CTA_INIT_DIFF		32*0.9999847412109375
 
@@ -48,6 +48,7 @@
 #define CTA_WORK_NROLL		53
 #define CTA_WORK_DIFFBITS	55
 #define CTA_REQWORK_REQUESTS	3
+#define CTA_CORE_HASHRATES	3
 
 /* Received message types */
 #define CTA_RECV_UNUSED		0
@@ -69,6 +70,7 @@
 #define CTA_SEND_REQUEST	4
 #define CTA_SEND_FMATCH		5
 #define CTA_SEND_IDENTIFY	6
+#define CTA_SEND_COREHASHRATE	7
 
 /* Types of reset in CTA_RESET_TYPE */
 #define CTA_RESET_NONE		0
@@ -118,9 +120,15 @@
 #define CTA_STAT_UPTIME_MS	21
 #define CTA_STAT_HASHES		25
 #define CTA_STAT_FLUSHED_HASHES 33
-#define CTA_STAT_AUTOVOLTAGE  41
-#define CTA_STAT_POWER_PERCENT 42
-#define CTA_STAT_POWER_USED 43
+#define CTA_STAT_AUTOVOLTAGE	41
+#define CTA_STAT_POWER_PERCENT	42
+#define CTA_STAT_POWER_USED	43
+#define CTA_STAT_VOLTAGE	45
+#define CTA_STAT_IPOWER_USED	47
+#define CTA_STAT_IVOLTAGE	49
+#define CTA_STAT_PS_TEMP1	51
+#define CTA_STAT_PS_TEMP2	53
+
 
 #define CTA_CORES		8
 #define CTA_PUMPS		2
@@ -183,6 +191,12 @@ struct cointerra_info {
 	uint8_t  autovoltage;
 	uint8_t  current_ps_percent;
 	uint16_t power_used;
+	uint16_t power_voltage;
+	uint16_t ipower_used;
+	uint16_t ipower_voltage;
+	uint16_t power_temps[2];
+
+	bool autovoltage_complete;
 
 	/* Calculated totals based on work done and nonces found */
 	uint64_t hashes;
@@ -190,6 +204,9 @@ struct cointerra_info {
 
 	/* Calculated totals based on shares returned */
 	uint64_t share_hashes;
+	uint64_t tot_core_hashes[CTA_CORES];
+	uint64_t tot_share_hashes;
+	struct timeval core_hash_start;
 	int requested;
 	uint16_t work_id;
 	int no_matching_work;

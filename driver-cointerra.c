@@ -11,6 +11,7 @@
 
 #include "miner.h"
 #include "driver-cointerra.h"
+#include <math.h>
 
 static const char *cointerra_hdr = "ZZ";
 
@@ -40,9 +41,33 @@ static uint8_t diff_to_bits(double diff)
 	return i;
 }
 
+static double bits_to_diff(uint8_t bits)
+{
+	double ret = 1.0;
+
+	if (likely(bits > 32))
+		ret *= 1ull << (bits - 32);
+	else if (unlikely(bits < 32))
+		ret /= 1ull << (32 - bits);
+	return ret;
+}
+
 static bool cta_reset_init(char *buf)
 {
 	return ((buf[CTA_MSG_TYPE] == CTA_RECV_RDONE) && ((buf[CTA_RESET_TYPE]&0x3) == CTA_RESET_INIT));
+}
+
+static char *mystrstr(char *haystack, int size, const char *needle)
+{
+	int loop = 0;
+
+	while (loop < (size-1)) {
+		if ((haystack[loop] == needle[0])&&
+		    (haystack[loop+1] == needle[1]))
+			return &haystack[loop];
+		loop++;
+	}
+	return NULL;
 }
 
 static bool cta_open(struct cgpu_info *cointerra)
@@ -101,7 +126,7 @@ static bool cta_open(struct cgpu_info *cointerra)
 		if (!amount)
 			continue;
 
-		msg = strstr(buf, cointerra_hdr);
+		msg = mystrstr(buf, amount, cointerra_hdr);
 		if (!msg) {
 			/* Keep the last byte in case it's the first byte of
 			 * the 2 byte header. */
@@ -307,10 +332,11 @@ static void cta_parse_recvmatch(struct thr_info *thr, struct cgpu_info *cointerr
 
 	work = clone_work_by_id(cointerra, retwork);
 	if (likely(work)) {
-		uint32_t wdiff = hu32_from_msg(buf, CTA_WORK_DIFFBITS);
+		uint8_t wdiffbits = u8_from_msg(buf, CTA_WORK_DIFFBITS);
 		uint32_t nonce = hu32_from_msg(buf, CTA_MATCH_NONCE);
 		unsigned char rhash[32];
 		char outhash[16];
+		double wdiff;
 		bool ret;
 
 		timestamp_offset = hu32_from_msg(buf, CTA_MATCH_NOFFSET);
@@ -322,6 +348,7 @@ static void cta_parse_recvmatch(struct thr_info *thr, struct cgpu_info *cointerr
 		}
 
 		/* Test against the difficulty we asked for along with the work */
+		wdiff = bits_to_diff(wdiffbits);
 		ret = test_nonce_diff(work, nonce, wdiff);
 
 		if (opt_debug) {
@@ -333,16 +360,19 @@ static void cta_parse_recvmatch(struct thr_info *thr, struct cgpu_info *cointerr
 		}
 
 		if (likely(ret)) {
-			uint8_t asic, core, pipe;
+			uint8_t asic, core, pipe, coreno;
 			int pipeno, bitchar, bitbit;
+			uint64_t hashes;
 
 			asic = u8_from_msg(buf, CTA_MCU_ASIC);
 			core = u8_from_msg(buf, CTA_MCU_CORE);
 			pipe = u8_from_msg(buf, CTA_MCU_PIPE);
 			pipeno = asic * 512 + core * 128 + pipe;
+			coreno = asic * 4 + core;
 			if (unlikely(asic > 1 || core > 3 || pipe > 127 || pipeno > 1023)) {
 				applog(LOG_WARNING, "%s %d: MCU invalid pipe asic %d core %d pipe %d",
 				       cointerra->drv->name, cointerra->device_id, asic, core, pipe);
+				coreno = 0;
 			} else {
 				info->last_pipe_nonce[pipeno] = time(NULL);
 				bitchar = pipeno / 8;
@@ -354,9 +384,10 @@ static void cta_parse_recvmatch(struct thr_info *thr, struct cgpu_info *cointerr
 			       cointerra->drv->name, cointerra->device_id, work->job_id, work->subid);
 			ret = submit_tested_work(thr, work);
 
+			hashes = (uint64_t)wdiff * 0x100000000ull;
 			mutex_lock(&info->lock);
-			if (ret)
-				info->share_hashes += (uint64_t)work->work_difficulty * 0x100000000ull;
+			info->share_hashes += hashes;
+			info->tot_core_hashes[coreno] += hashes;
 			info->hashes += nonce;
 			mutex_unlock(&info->lock);
 		} else {
@@ -377,7 +408,7 @@ static void cta_parse_recvmatch(struct thr_info *thr, struct cgpu_info *cointerr
 				__bin2hex(hexwdata, wdata, 12);
 				applog(LOG_DEBUG, "False match sent: work id %u midstate %s  blkhdr %s",
 				       wid, hexmidstate, hexwdata);
-				applog(LOG_DEBUG, "False match reports: work id 0x%04x MCU id 0x%08x work diff %u",
+				applog(LOG_DEBUG, "False match reports: work id 0x%04x MCU id 0x%08x work diff %.1f",
 				       retwork, mcu_tag, wdiff);
 				applog(LOG_DEBUG, "False match tested: nonce 0x%08x noffset %d %s",
 				       nonce, timestamp_offset, outhash);
@@ -488,7 +519,8 @@ static void cta_parse_statset(struct cointerra_info *info, char *buf)
 	mutex_unlock(&info->lock);
 }
 
-static void cta_parse_info(struct cointerra_info *info, char *buf)
+static void cta_parse_info(struct cgpu_info *cointerra, struct cointerra_info *info,
+			   char *buf)
 {
 	mutex_lock(&info->lock);
 	info->hwrev = hu64_from_msg(buf, CTA_INFO_HWREV);
@@ -507,6 +539,12 @@ static void cta_parse_info(struct cointerra_info *info, char *buf)
 	info->min_diffbits = u8_from_msg(buf, CTA_INFO_MINDIFFBITS);
 	info->max_diffbits = u8_from_msg(buf, CTA_INFO_MAXDIFFBITS);
 	mutex_unlock(&info->lock);
+
+	if (!cointerra->unique_id) {
+		uint32_t b32 = htobe32(info->serial);
+
+		cointerra->unique_id = bin2hex((unsigned char *)&b32, 4);
+	}
 }
 
 static void cta_parse_rdone(struct cgpu_info *cointerra, struct cointerra_info *info,
@@ -542,6 +580,8 @@ static void cta_parse_rdone(struct cgpu_info *cointerra, struct cointerra_info *
 	}
 }
 
+static void cta_zero_stats(struct cgpu_info *cointerra);
+
 static void cta_parse_debug(struct cointerra_info *info, char *buf)
 {
 	mutex_lock(&info->lock);
@@ -553,8 +593,34 @@ static void cta_parse_debug(struct cointerra_info *info, char *buf)
 	info->autovoltage = u8_from_msg(buf, CTA_STAT_AUTOVOLTAGE);
 	info->current_ps_percent = u8_from_msg(buf, CTA_STAT_POWER_PERCENT);
 	info->power_used = hu16_from_msg(buf,CTA_STAT_POWER_USED);
+	info->power_voltage = hu16_from_msg(buf,CTA_STAT_VOLTAGE);
+	info->ipower_used = hu16_from_msg(buf,CTA_STAT_IPOWER_USED);
+	info->ipower_voltage = hu16_from_msg(buf,CTA_STAT_IVOLTAGE);
+	info->power_temps[0] = hu16_from_msg(buf,CTA_STAT_PS_TEMP1);
+	info->power_temps[1] = hu16_from_msg(buf,CTA_STAT_PS_TEMP2);
 
 	mutex_unlock(&info->lock);
+
+	/* Autovoltage is positive only once at startup and eventually drops
+	 * to zero. After that time we reset the stats since they're unreliable
+	 * till then. */
+	if (unlikely(!info->autovoltage_complete && !info->autovoltage)) {
+		struct cgpu_info *cointerra = info->thr->cgpu;
+
+		info->autovoltage_complete = true;
+		cgtime(&cointerra->dev_start_tv);
+		cta_zero_stats(cointerra);
+		cointerra->total_mhashes = 0;
+		cointerra->accepted = 0;
+		cointerra->rejected = 0;
+		cointerra->hw_errors = 0;
+		cointerra->utility = 0.0;
+		cointerra->last_share_pool_time = 0;
+		cointerra->diff1 = 0;
+		cointerra->diff_accepted = 0;
+		cointerra->diff_rejected = 0;
+		cointerra->last_share_diff = 0;
+	}
 }
 
 static void cta_parse_msg(struct thr_info *thr, struct cgpu_info *cointerra,
@@ -590,7 +656,7 @@ static void cta_parse_msg(struct thr_info *thr, struct cgpu_info *cointerra,
 		case CTA_RECV_INFO:
 			applog(LOG_DEBUG, "%s %d: Info message received",
 			       cointerra->drv->name, cointerra->device_id);
-			cta_parse_info(info, buf);
+			cta_parse_info(cointerra, info, buf);
 			break;
 		case CTA_RECV_MSG:
 			applog(LOG_NOTICE, "%s %d: MSG: %s",
@@ -635,7 +701,7 @@ static void *cta_recv_thread(void *arg)
 		offset += amount;
 
 		while (offset >= CTA_MSG_SIZE) {
-			char *msg = strstr(buf, cointerra_hdr);
+			char *msg = mystrstr(buf, offset, cointerra_hdr);
 			int begin;
 
 			if (unlikely(!msg)) {
@@ -699,8 +765,6 @@ static bool cta_prepare(struct thr_info *thr)
 	struct cgpu_info *cointerra = thr->cgpu;
 	struct cointerra_info *info = calloc(sizeof(struct cointerra_info), 1);
 	char buf[CTA_MSG_SIZE];
-	time_t now_t;
-	int i;
 
 	if (unlikely(cointerra->usbinfo.nodev))
 		return false;
@@ -735,12 +799,7 @@ static bool cta_prepare(struct thr_info *thr)
 	if (!cta_send_msg(cointerra, buf))
 		return false;
 
-	/* Start with a full bitmap of valid nonce flags for every pipe */
-	now_t = time(NULL);
-	for (i = 0; i < 1024; i++)
-		info->last_pipe_nonce[i] = now_t;
-	for (i = 0; i < 128; i++)
-		info->pipe_bitmap[i] = 0x00u;
+	cgtime(&info->core_hash_start);
 
 	return true;
 }
@@ -864,7 +923,6 @@ static void cta_flush_work(struct cgpu_info *cointerra)
 	applog(LOG_INFO, "%s %d: cta_flush_work %d", cointerra->drv->name, cointerra->device_id,
 	       __LINE__);
 	cta_send_reset(cointerra, info, CTA_RESET_NEW, 0);
-	/* TODO revisit */
 	info->thr->work_restart = false;
 }
 
@@ -876,10 +934,46 @@ static void cta_update_work(struct cgpu_info *cointerra)
 	cta_send_reset(cointerra, info, CTA_RESET_UPDATE, 0);
 }
 
+static void cta_zero_corehashes(struct cointerra_info *info)
+{
+	int i;
+
+	for (i = 0; i < CTA_CORES; i++)
+		info->tot_core_hashes[i] = 0;
+	cgtime(&info->core_hash_start);
+}
+
+/* Send per core hashrate calculations at regular intervals ~every 5 minutes */
+static void cta_send_corehashes(struct cgpu_info *cointerra, struct cointerra_info *info,
+				double corehash_time)
+{
+	uint16_t core_ghs[CTA_CORES];
+	double k[CTA_CORES];
+	char buf[CTA_MSG_SIZE];
+	int i, offset;
+
+	for (i = 0; i < CTA_CORES; i++) {
+		k[i] = (double)info->tot_core_hashes[i] / ((double)32 * (double)0x100000000ull);
+		k[i] = sqrt(k[i]) + 1;
+		k[i] *= k[i];
+		k[i] = k[i] * 32 * ((double)0x100000000ull / (double)1000000000) / corehash_time;
+		core_ghs[i] = k[i];
+	}
+	cta_gen_message(buf, CTA_SEND_COREHASHRATE);
+	offset = CTA_CORE_HASHRATES;
+	for (i = 0; i < CTA_CORES; i++) {
+		msg_from_hu16(buf, offset, core_ghs[i]);
+		offset += 2; // uint16_t
+	}
+	cta_send_msg(cointerra, buf);
+}
+
 static int64_t cta_scanwork(struct thr_info *thr)
 {
 	struct cgpu_info *cointerra = thr->cgpu;
 	struct cointerra_info *info = cointerra->device_data;
+	double corehash_time;
+	struct timeval now;
 	int64_t hashes;
 
 	applog(LOG_DEBUG, "%s %d: cta_scanwork %d", cointerra->drv->name, cointerra->device_id,__LINE__);
@@ -889,17 +983,17 @@ static int64_t cta_scanwork(struct thr_info *thr)
 		goto out;
 	}
 
+	cgtime(&now);
+
 	if (unlikely(thr->work_restart)) {
 		applog(LOG_INFO, "%s %d: Flush work line %d",
 		     cointerra->drv->name, cointerra->device_id,__LINE__);
 		cta_flush_work(cointerra);
 	} else {
 		struct timespec abstime, tsdiff = {0, 500000000};
-		struct timeval now;
 		time_t now_t;
 		int i;
 
-		cgtime(&now);
 		timeval_to_spec(&abstime, &now);
 		timeraddspec(&abstime, &tsdiff);
 
@@ -908,11 +1002,13 @@ static int64_t cta_scanwork(struct thr_info *thr)
 		 * return a work done message for some work items. */
 		age_queued_work(cointerra, 300.0);
 
-		/* Use this opportunity to unset the bits in any pipes that
-		 * have not returned a valid nonce for over an hour. */
+		/* Each core should be 1.7MH so at max diff of 32 should
+		 * average a share every ~80 seconds.Use this opportunity to
+		 * unset the bits in any pipes that have not returned a valid
+		 * nonce for over 30 full nonce ranges or 2400s. */
 		now_t = time(NULL);
 		for (i = 0; i < 1024; i++) {
-			if (unlikely(now_t > info->last_pipe_nonce[i] + 3600)) {
+			if (unlikely(now_t > info->last_pipe_nonce[i] + 2400)) {
 				int bitchar = i / 8, bitbit = i % 8;
 
 				info->pipe_bitmap[bitchar] &= ~(0x80 >> bitbit);
@@ -932,10 +1028,17 @@ static int64_t cta_scanwork(struct thr_info *thr)
 		}
 	}
 
+	corehash_time = tdiff(&now, &info->core_hash_start);
+	if (corehash_time > 300) {
+		cta_send_corehashes(cointerra, info, corehash_time);
+		cta_zero_corehashes(info);
+	}
+
 	mutex_lock(&info->lock);
-	hashes = info->hashes;
-	info->tot_calc_hashes += hashes;
-	info->hashes = 0;
+	hashes = info->share_hashes;
+	info->tot_share_hashes += info->share_hashes;
+	info->tot_calc_hashes += info->hashes;
+	info->hashes = info->share_hashes = 0;
 	mutex_unlock(&info->lock);
 
 	if (unlikely(cointerra->usbinfo.nodev))
@@ -969,7 +1072,17 @@ static void cta_zero_stats(struct cgpu_info *cointerra)
 
 	info->tot_calc_hashes = 0;
 	info->tot_reset_hashes = info->tot_hashes;
-	info->share_hashes = 0;
+	info->tot_share_hashes = 0;
+	cta_zero_corehashes(info);
+}
+
+static int bits_set(char v)
+{
+	int c;
+
+	for (c = 0; v; c++)
+		v &= v - 1;
+	return c;
 }
 
 static struct api_data *cta_api_stats(struct cgpu_info *cgpu)
@@ -977,10 +1090,11 @@ static struct api_data *cta_api_stats(struct cgpu_info *cgpu)
 	struct api_data *root = NULL;
 	struct cointerra_info *info = cgpu->device_data;
 	double dev_runtime = cgpu_runtime(cgpu);
+	int i, asic, core, coreno = 0;
+	struct timeval now;
 	char bitmaphex[36];
 	uint64_t ghs, val;
 	char buf[64];
-	int i;
 
 	/* Info data */
 	root = api_add_uint16(root, "HW Revision", &info->hwrev, false);
@@ -1000,11 +1114,11 @@ static struct api_data *cta_api_stats(struct cgpu_info *cgpu)
 	/* Status readings */
 	for (i = 0; i < CTA_CORES; i++) {
 		sprintf(buf, "CoreTemp%d", i);
-		root = api_add_uint16(root, buf, &info->coretemp[i], false);
+		root = api_add_int16(root, buf, &info->coretemp[i], false);
 	}
-	root = api_add_uint16(root, "Ambient Low", &info->ambtemp_low, false);
-	root = api_add_uint16(root, "Ambient Avg", &info->ambtemp_avg, false);
-	root = api_add_uint16(root, "Ambient High", &info->ambtemp_high, false);
+	root = api_add_int16(root, "Ambient Low", &info->ambtemp_low, false);
+	root = api_add_int16(root, "Ambient Avg", &info->ambtemp_avg, false);
+	root = api_add_int16(root, "Ambient High", &info->ambtemp_high, false);
 	for (i = 0; i < CTA_PUMPS; i++) {
 		sprintf(buf, "PumpRPM%d", i);
 		root = api_add_uint16(root, buf, &info->pump_tachs[i], false);
@@ -1052,15 +1166,13 @@ static struct api_data *cta_api_stats(struct cgpu_info *cgpu)
 	root = api_add_uint64(root, "Calc hashrate", &ghs, true);
 	ghs = (info->tot_hashes - info->tot_reset_hashes) / dev_runtime;
 	root = api_add_uint64(root, "Hashrate", &ghs, true);
-	ghs = info->tot_hashes / dev_runtime;
-	root = api_add_uint64(root, "Raw hashrate", &ghs, true);
-	ghs = info->share_hashes / dev_runtime;
+	ghs = info->tot_share_hashes / dev_runtime;
 	root = api_add_uint64(root, "Share hashrate", &ghs, true);
 	root = api_add_uint64(root, "Total calc hashes", &info->tot_calc_hashes, false);
 	ghs = info->tot_hashes - info->tot_reset_hashes;
 	root = api_add_uint64(root, "Total hashes", &ghs, true);
 	root = api_add_uint64(root, "Total raw hashes", &info->tot_hashes, false);
-	root = api_add_uint64(root, "Total share hashes", &info->share_hashes, false);
+	root = api_add_uint64(root, "Total share hashes", &info->tot_share_hashes, false);
 	root = api_add_uint64(root, "Total flushed hashes", &info->tot_flushed_hashes, false);
 	val = cgpu->diff_accepted * 0x100000000ull;
 	root = api_add_uint64(root, "Accepted hashes", &val, true);
@@ -1070,26 +1182,40 @@ static struct api_data *cta_api_stats(struct cgpu_info *cgpu)
 	root = api_add_uint64(root, "Rejected hashes", &val, true);
 	ghs = val / dev_runtime;
 	root = api_add_uint64(root, "Rejected hashrate", &ghs, true);
+
+	cgtime(&now);
+	dev_runtime = tdiff(&now, &info->core_hash_start);
+	if (dev_runtime < 1)
+		dev_runtime = 1;
+	for (i = 0; i < CTA_CORES; i++) {
+		sprintf(buf, "Core%d hashrate", i);
+		ghs = info->tot_core_hashes[i] / dev_runtime;
+		root = api_add_uint64(root, buf, &ghs, true);
+	}
 	root = api_add_uint32(root, "Uptime",&info->uptime,false);
-	__bin2hex(bitmaphex, info->pipe_bitmap, 16);
-	root = api_add_string(root, "Asic0Core0", bitmaphex, true);
-	__bin2hex(bitmaphex, &info->pipe_bitmap[16], 16);
-	root = api_add_string(root, "Asic0Core1", bitmaphex, true);
-	__bin2hex(bitmaphex, &info->pipe_bitmap[32], 16);
-	root = api_add_string(root, "Asic0Core2", bitmaphex, true);
-	__bin2hex(bitmaphex, &info->pipe_bitmap[48], 16);
-	root = api_add_string(root, "Asic0Core3", bitmaphex, true);
-	__bin2hex(bitmaphex, &info->pipe_bitmap[64], 16);
-	root = api_add_string(root, "Asic1Core0", bitmaphex, true);
-	__bin2hex(bitmaphex, &info->pipe_bitmap[80], 16);
-	root = api_add_string(root, "Asic1Core1", bitmaphex, true);
-	__bin2hex(bitmaphex, &info->pipe_bitmap[96], 16);
-	root = api_add_string(root, "Asic1Core2", bitmaphex, true);
-	__bin2hex(bitmaphex, &info->pipe_bitmap[112], 16);
-	root = api_add_string(root, "Asic1Core3", bitmaphex, true);
-	root = api_add_uint8(root,"AV",&info->autovoltage, false);
-	root = api_add_uint8(root,"Power Supply Percent",&info->current_ps_percent, false);
-	root = api_add_uint16(root,"Power Used",&info->power_used, false);
+	for (asic = 0; asic < 2; asic++) {
+		for (core = 0; core < 4; core++) {
+			char bitmapcount[40], asiccore[12];
+			int count = 0;
+
+			sprintf(asiccore, "Asic%dCore%d", asic, core);
+			__bin2hex(bitmaphex, &info->pipe_bitmap[coreno], 16);
+			for (i = coreno; i < coreno + 16; i++)
+				count += bits_set(info->pipe_bitmap[i]);
+			snprintf(bitmapcount, 40, "%d:%s", count, bitmaphex);
+			root = api_add_string(root, asiccore, bitmapcount, true);
+			coreno += 16;
+		}
+	}
+	root = api_add_uint8(root, "AV", &info->autovoltage, false);
+	root = api_add_uint8(root, "Power Supply Percent", &info->current_ps_percent, false);
+	root = api_add_uint16(root, "Power Used", &info->power_used, false);
+	root = api_add_uint16(root, "IOUT", &info->power_used, false);
+	root = api_add_uint16(root, "VOUT", &info->power_voltage, false);
+	root = api_add_uint16(root, "IIN", &info->ipower_used, false);
+	root = api_add_uint16(root, "VIN", &info->ipower_voltage, false);
+	root = api_add_uint16(root, "PSTemp1", &info->power_temps[0], false);
+	root = api_add_uint16(root, "PSTemp2", &info->power_temps[1], false);
 
 	return root;
 }
@@ -1106,9 +1232,9 @@ static void cta_statline_before(char *buf, size_t bufsiz, struct cgpu_info *coin
 		if (info->corefreqs[i] > freq)
 			freq = info->corefreqs[i];
 	}
-	max_volt /= 100;
+	max_volt /= 1000;
 
-	tailsprintf(buf, bufsiz, "%3dMHz %3.1fC %2.1fV", freq, cointerra->temp, max_volt);
+	tailsprintf(buf, bufsiz, "%3dMHz %3.1fC %3.2fV", freq, cointerra->temp, max_volt);
 }
 
 struct device_drv cointerra_drv = {
@@ -1126,5 +1252,5 @@ struct device_drv cointerra_drv = {
 	.get_statline_before = cta_statline_before,
 	.thread_shutdown = cta_shutdown,
 	.zero_stats = cta_zero_stats,
-	.max_diff = 256, // Set it below the actual limit to check nonces
+	.max_diff = 32, // Set it below the actual limit to check nonces
 };

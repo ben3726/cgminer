@@ -1,7 +1,7 @@
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_maj], [4])
-m4_define([v_min], [0])
+m4_define([v_min], [3])
 m4_define([v_mic], [0])
 ##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##--##
 m4_define([v_ver], [v_maj.v_min.v_mic])
@@ -125,6 +125,17 @@ if test "x$has_winpthread" != xtrue; then
                 AC_MSG_ERROR([Could not find pthread library - please install libpthread]))
         PTHREAD_LIBS=-lpthread
 fi
+
+ants1="no"
+
+AC_ARG_ENABLE([ants1],
+	[AC_HELP_STRING([--enable-ants1],[Compile support for Antminer S1 Bitmain (default disabled)])],
+	[ants1=$enableval]
+	)
+if test "x$ants1" = xyes; then
+	AC_DEFINE([USE_ANT_S1], [1], [Defined to 1 if Antminer S1 Bitmain support is wanted])
+fi
+AM_CONDITIONAL([HAS_ANT_S1], [test x$ants1 = xyes])
 
 avalon="no"
 
@@ -293,6 +304,20 @@ if test "x$modminer" = xyes; then
 fi
 AM_CONDITIONAL([HAS_MODMINER], [test x$modminer = xyes])
 
+
+
+spondoolies="no"
+
+AC_ARG_ENABLE([spondoolies],
+	[AC_HELP_STRING([--enable-spondoolies],[Compile support for Spondoolies (default disabled)])],
+	[spondoolies=$enableval]
+	)
+if test "x$spondoolies" = xyes; then
+	AC_DEFINE([USE_SPONDOOLIES], [1], [Defined to 1 if Spondoolies support is wanted])
+fi
+AM_CONDITIONAL([HAS_SPONDOOLIES], [test x$spondoolies = xyes])
+
+
 curses="auto"
 
 AC_ARG_WITH([curses],
@@ -317,7 +342,7 @@ else
 	])
 fi
 
-if test x$avalon$bitforce$bitfury$modminer$bflsc$icarus$hashfast$klondike$drillbit$cointerra != xnononononononononono; then
+if test x$avalon$bitforce$bitfury$modminer$bflsc$icarus$hashfast$klondike$drillbit$cointerra$ants1 != xnonononononononononono; then
 	want_usbutils=true
 else
 	want_usbutils=false
@@ -497,6 +522,12 @@ echo "  curses.TUI...........: $cursesmsg"
 
 
 echo
+if test "x$ants1" = xyes; then
+	echo "  Antminer.S1.Bitmain..: Enabled"
+else
+	echo "  Antminer.S1.Bitmain..: Disabled"
+fi
+
 if test "x$avalon" = xyes; then
 	echo "  Avalon.ASICs.........: Enabled"
 else
@@ -545,6 +576,12 @@ else
 	echo "  Cointerra.ASICs......: Disabled"
 fi
 
+if test "x$spondoolies" = xyes; then
+	echo "  Spondoolies.ASICs....: Enabled"
+else
+	echo "  Spondoolies.ASICs....: Disabled"
+fi
+
 if test "x$bitmine_A1" = xyes; then
 	echo "  Bitmine-A1.ASICs.....: Enabled"
 else
@@ -587,7 +624,7 @@ else
 	echo "  ModMiner.FPGAs.......: Disabled"
 fi
 
-if test "x$avalon$avalon2$bab$bflsc$bitforce$bitfury$hashfast$icarus$klondike$knc$modminer$drillbit$minion$cointerra$bitmine_A1" = xnonononononononononononononono; then
+if test "x$avalon$avalon2$bab$bflsc$bitforce$bitfury$hashfast$icarus$klondike$knc$modminer$drillbit$minion$cointerra$bitmine_A1$ants1$spondoolies" = xnonononononononononononononononono; then
 	AC_MSG_ERROR([No mining configured in])
 fi
 
