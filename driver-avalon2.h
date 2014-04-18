@@ -103,6 +103,7 @@ struct avalon2_info {
 	bool new_stratum;
 
 	int pool_no;
+	struct pool pool;
 	int diff;
 
 	int local_works[AVA2_DEFAULT_MODULARS];

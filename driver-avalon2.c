@@ -174,7 +174,53 @@ static inline uint32_t decode_voltage(uint32_t v)
 	return (0x78 - (rev8(v >> 8) >> 1)) * 125;
 }
 
+static int copy_stratum_pool(struct thr_info *thr, struct pool *p)
+{
+	struct cgpu_info *avalon2 = thr->cgpu;
+	struct avalon2_info *info = avalon2->device_data;
+	struct pool *pool = &info->pool;
+	int i;
+#if 0
+	free(pool->coinbase);
+	free(pool->nonce1);
+
+	free(pool->swork.job_id);
+	free(pool->swork.prev_hash);
+	for (i = 0; i < pool->swork.merkles; i++)
+		free(pool->swork.merkle_bin[i]);
+	free(pool->swork.merkle_bin);
+	free(pool->swork.bbversion);
+	free(pool->swork.nbit);
+	free(pool->swork.ntime);
+#endif
+
+	memcpy(pool, p, sizeof(struct pool));
+	pool->coinbase = calloc(p->coinbase_len, 1);
+	if (unlikely(!pool->coinbase))
+		quit(1, "Failed to calloc pool coinbase in parse_notify");
+	memcpy(pool->coinbase, p->coinbase, p->coinbase_len);
+
+	/* Copy the stratum work */
+	memcpy(&pool->swork, &p->swork, sizeof(struct stratum_work));
+	pool->swork.job_id = strdup(p->swork.job_id);
+	pool->swork.prev_hash = strdup(p->swork.prev_hash);
+	pool->swork.merkle_bin = realloc(pool->swork.merkle_bin,
+					 sizeof(char *) * p->swork.merkles + 1);
+	for (i = 0; i < p->swork.merkles; i++) {
+		pool->swork.merkle_bin[i] = malloc(32);
+		if (unlikely(!pool->swork.merkle_bin[i]))
+			quit(1, "Failed to malloc pool swork merkle_bin");
+		memcpy(pool->swork.merkle_bin[i], p->swork.merkle_bin[i], 32);
+	}
+	pool->swork.bbversion = strdup(p->swork.bbversion);
+	pool->swork.nbit = strdup(p->swork.nbit);
+	pool->swork.ntime = strdup(p->swork.ntime);
+	pool->nonce1 = strdup(p->nonce1);
+	return 0;
+}
+
 extern void submit_nonce2_nonce(struct thr_info *thr, uint32_t pool_no, uint32_t nonce2, uint32_t nonce);
+extern void submit_jobid_nonce(struct thr_info *thr, struct pool *pool, uint32_t nonce2, uint32_t nonce);
 static int decode_pkg(struct thr_info *thr, struct avalon2_ret *ar, uint8_t *pkg)
 {
 	struct cgpu_info *avalon2;
@@ -705,6 +751,7 @@ static int64_t avalon2_scanhash(struct thr_info *thr)
 		info->pool_no = pool->pool_no;
 
 		cg_wlock(&pool->data_lock);
+		//copy_stratum_pool(thr, pool);
 		avalon2_stratum_pkgs(info->fd, pool, thr);
 		cg_wunlock(&pool->data_lock);
 

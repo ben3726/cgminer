@@ -1786,6 +1786,7 @@ static bool parse_notify(struct pool *pool, json_t *val)
 out_unlock:
 	cg_wunlock(&pool->data_lock);
 
+		applog(LOG_ERR, "job_id: %s", job_id);
 	if (opt_protocol) {
 		applog(LOG_DEBUG, "job_id: %s", job_id);
 		applog(LOG_DEBUG, "prev_hash: %s", prev_hash);

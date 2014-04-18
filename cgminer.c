@@ -6738,6 +6738,21 @@ void submit_nonce2_nonce(struct thr_info *thr, uint32_t pool_no, uint32_t nonce2
 	submit_nonce(thr, work, nonce);
 	free_work(work);
 }
+
+void submit_jobid_nonce(struct thr_info *thr, struct pool *pool, uint32_t nonce2, uint32_t nonce)
+{
+	struct cgpu_info *cgpu = thr->cgpu;
+	struct device_drv *drv = cgpu->drv;
+
+	struct work *work = make_work();
+
+	pool->nonce2 = nonce2;
+	gen_stratum_work(pool, work);
+
+	work->device_diff = MIN(drv->working_diff, work->work_difficulty);
+	submit_nonce(thr, work, nonce);
+	free_work(work);
+}
 #endif
 
 /* Generates stratum based work based on the most recent notify information
