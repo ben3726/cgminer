@@ -843,7 +843,7 @@ bool fulltest(const unsigned char *hash, const unsigned char *target)
 		}
 	}
 
-	if (opt_debug) {
+	if (1) {
 		unsigned char hash_swap[32], target_swap[32];
 		char *hash_str, *target_str;
 
@@ -852,7 +852,7 @@ bool fulltest(const unsigned char *hash, const unsigned char *target)
 		hash_str = bin2hex(hash_swap, 32);
 		target_str = bin2hex(target_swap, 32);
 
-		applog(LOG_DEBUG, " Proof: %s\nTarget: %s\nTrgVal? %s",
+		applog(LOG_ERR, " Proof: %s\nTarget: %s\nTrgVal? %s",
 			hash_str,
 			target_str,
 			rc ? "YES (hash <= target)" :
@@ -1694,21 +1694,17 @@ static bool parse_notify(struct pool *pool, json_t *val)
 		(long)tv_now.tv_sec, (long)tv_last.tv_sec,
 		(long)tdiff(&tv_now, &tv_last));
 
-	if (pool == current_pool()) {
-        	applog(LOG_ERR, "XIANGFU");
+	if (pool == current_pool() && clean == false) {
 		if ((long)tdiff(&tv_now, &tv_last) < (long)30) {
-        		applog(LOG_ERR, "<<<< 30");
+			applog(LOG_ERR, "DEBUG: Ignore job_id: %s", job_id);
+			ret = true;
+
 			goto out;
 		}
 	}
 
 	tv_last.tv_sec = tv_now.tv_sec;
 	tv_last.tv_usec = tv_now.tv_usec;
-
-        applog(LOG_ERR, "Clean %d: (%ld  -- %ld) TDIFF: %ld",
-		clean,
-		(long)tv_now.tv_sec, (long)tv_last.tv_sec,
-		(long)tdiff(&tv_now, &tv_last));
 #endif
 
 	if (!job_id || !prev_hash || !coinbase1 || !coinbase2 || !bbversion || !nbit || !ntime) {

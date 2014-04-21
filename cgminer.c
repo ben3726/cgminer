@@ -6731,11 +6731,14 @@ void submit_nonce2_nonce(struct thr_info *thr, uint32_t pool_no, uint32_t nonce2
 	struct pool *pool = pools[pool_no];
 	struct work *work = make_work();
 
+	bool ret;
 	pool->nonce2 = nonce2;
 	gen_stratum_work(pool, work);
 
 	work->device_diff = MIN(drv->working_diff, work->work_difficulty);
-	submit_nonce(thr, work, nonce);
+	ret = submit_nonce(thr, work, nonce);
+	applog(LOG_ERR, "SUBMIT_NONCE: %d", ret);
+
 	free_work(work);
 }
 #endif
@@ -7119,7 +7122,7 @@ bool submit_tested_work(struct thr_info *thr, struct work *work)
 	update_work_stats(thr, work);
 
 	if (!fulltest(work->hash, work->target)) {
-		applog(LOG_INFO, "%s %d: Share above target", thr->cgpu->drv->name,
+		applog(LOG_ERR, "%s %d: Share above target", thr->cgpu->drv->name,
 		       thr->cgpu->device_id);
 		return false;
 	}

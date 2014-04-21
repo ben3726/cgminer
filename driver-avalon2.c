@@ -236,13 +236,12 @@ static int decode_pkg(struct thr_info *thr, struct avalon2_ret *ar, uint8_t *pkg
 			nonce = be32toh(nonce);
 			nonce -= 0x180;
 
-			applog(LOG_DEBUG, "Avalon2: Found! [%s] %d:(%08x) (%08x)",
+			applog(LOG_ERR, "Avalon2: Found! [%s] %d:(%08x) (%08x)",
 			       job_id, pool_no, nonce2, nonce);
 			/* FIXME:
 			 * We need remember the pre_pool. then submit the stale work */
-			pool = pools[pool_no];
-			if (job_idcmp(job_id, pool->swork.job_id))
-				break;
+			/* if (job_idcmp(job_id, pool->swork.job_id)) */
+			/* 	break; */
 
 			if (thr && !info->new_stratum)
 				submit_nonce2_nonce(thr, pool_no, nonce2, nonce);
@@ -429,7 +428,7 @@ static int avalon2_stratum_pkgs(int fd, struct pool *pool, struct thr_info *thr)
 	while (avalon2_send_pkg(fd, &pkg, thr) != AVA2_SEND_OK)
 		;
 
-	set_target(target, pool->swork.diff);
+	set_target(target, pool->sdiff);
 	memcpy(pkg.data, target, 32);
 	if (opt_debug) {
 		char *target_str;
